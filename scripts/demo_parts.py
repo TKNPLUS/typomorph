@@ -227,7 +227,7 @@ def cmd_reconstruct(args: argparse.Namespace) -> None:
     rep_patches = kmeans_data["rep_patches"]     # (k, H, W)
     labels = features_data["labels"] if "labels" in features_data else kmeans_data["labels"]
     positions = features_data["positions"]       # (N, 3): [file_idx, row, col]
-    file_ids = features_data["file_ids"]         # (F,)
+    file_ids = features_data.get("file_ids", features_data.get("sources"))
     patch_size = int(kmeans_data["patch_size"])
     n_clusters = int(kmeans_data["n_clusters"])
 
@@ -415,7 +415,7 @@ def cmd_decompose(args: argparse.Namespace) -> None:
     n_clusters = int(kmeans_data["n_clusters"])
     labels = kmeans_data["labels"]               # (N,)
     positions = features_data["positions"]       # (N, 3): [file_idx, row, col]
-    file_ids = features_data["file_ids"]         # (F,)
+    file_ids = features_data.get("file_ids", features_data.get("sources"))
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
