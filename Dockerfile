@@ -17,4 +17,6 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 WORKDIR /work
 
+EXPOSE 8501
+
 CMD ["bash"]
