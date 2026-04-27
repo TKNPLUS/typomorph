@@ -9,18 +9,21 @@
 ```
 typomorph/
 ├── data/
-│   └── joyo.txt          # 常用漢字の原典テキスト（UTF-8、1行1文字）
+│   └── joyo.txt               # 常用漢字の原典テキスト（UTF-8、1行1文字）
 ├── lists/
-│   ├── make_lists.py     # 文字リスト生成スクリプト
-│   ├── joyo.txt          # 常用漢字リスト（生成物）
+│   ├── make_lists.py          # 文字リスト生成スクリプト
+│   ├── joyo.txt               # 常用漢字リスト（生成物）
 │   ├── jis_level2_kanji.txt   # JIS X 0208 第1・第2水準 漢字（生成物）
 │   └── union_joyo_jis2.txt    # 常用∪JIS2 の和集合（生成物）
 ├── scripts/
-│   ├── render_png.py     # 文字 → 正規化PNG レンダリングスクリプト
-│   ├── make_sdf.py       # PNG → SDF（.npy）生成スクリプト
-│   └── viz_sdf.py        # SDF（.npy）可視化スクリプト（単体表示・ギャラリー）
-├── requirements.txt      # Python 依存パッケージ
-├── Dockerfile            # Docker イメージ定義
+│   ├── render_png.py          # 文字 → 正規化PNG レンダリングスクリプト
+│   ├── make_sdf.py            # PNG → SDF（.npy）生成スクリプト
+│   ├── viz_sdf.py             # SDF（.npy）可視化スクリプト（単体表示・ギャラリー）
+│   ├── patch_extractor.py     # SDF → 局所パッチ抽出・特徴量保存（.npz）
+│   ├── patch_kmeans.py        # パッチ特徴量 → PCA + k-means クラスタ辞書（.npz）
+│   └── viz_parts.py           # クラスタ辞書の可視化（部品ギャラリー・位置ヒートマップ）
+├── requirements.txt           # Python 依存パッケージ
+├── Dockerfile                 # Docker イメージ定義
 └── README.md
 ```
 
@@ -330,3 +333,145 @@ fontconfig が未インストールの場合：
 sudo apt install fonts-noto-cjk fontconfig
 fc-cache -fv
 ```
+
+---
+
+## フェーズ2: パッチ抽出 → クラスタリング → 部品辞書生成
+
+SDFの可視化・正常性確認が済んだら、次のステップとして「部首っぽいパーツ断片化」を行います。  
+SDFから局所パッチを切り出し、PCAで次元圧縮したあとにk-meansでクラスタリングすることで、  
+**"部首候補パーツの辞書"** を自動生成できます。
+
+```
+SDF (.npy)
+  └─ patch_extractor.py ─→ patches.npz（特徴量行列）
+       └─ patch_kmeans.py ─→ kmeans.npz（クラスタ辞書）
+            └─ viz_parts.py ─→ parts_gallery.png / parts_heatmap.png
+```
+
+### ⑦ パッチ抽出（patch_extractor.py）
+
+各SDF画像から「SDF=0 付近（輪郭近傍）」のパッチを切り出します。  
+各パッチは flatten されて特徴量ベクトルとして `.npz` に保存されます。
+
+```bash
+python scripts/patch_extractor.py \
+    --sdf  out/sdf \
+    --out  out/patches/patches.npz
+```
+
+**Docker を使う場合:**
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/patch_extractor.py \
+    --sdf  out/sdf \
+    --out  out/patches/patches.npz
+```
+
+**主なオプション:**
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--sdf` | （必須） | SDF `.npy` ファイルのディレクトリ |
+| `--out` | （必須） | 出力 `.npz` ファイルパス |
+| `--list` | なし（全ファイル） | 文字リスト `.txt` で対象を絞る |
+| `--patch-size` | `64` | パッチの一辺サイズ（ピクセル） |
+| `--border-patches` | `20` | 1文字あたりの輪郭近傍パッチ数 |
+| `--random-patches` | `0` | 1文字あたりのランダムパッチ数 |
+| `--border-margin` | `8` | 「輪郭近傍」と判定する SDF 閾値（ピクセル） |
+| `--seed` | `42` | 乱数シード |
+
+---
+
+### ⑧ PCA + k-means クラスタリング（patch_kmeans.py）
+
+抽出したパッチ特徴量を PCA で圧縮し、k-means でクラスタリングします。  
+各クラスタが「部首・部品の候補」に対応します。
+
+```bash
+python scripts/patch_kmeans.py \
+    --features out/patches/patches.npz \
+    --out      out/patches/kmeans.npz
+```
+
+**Docker を使う場合:**
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/patch_kmeans.py \
+    --features out/patches/patches.npz \
+    --out      out/patches/kmeans.npz
+```
+
+**主なオプション:**
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--features` | （必須） | `patch_extractor.py` が出力した `.npz` ファイル |
+| `--out` | （必須） | 出力クラスタ辞書 `.npz` ファイルパス |
+| `--clusters` | `64` | k-means のクラスタ数（部品数） |
+| `--pca` | `64` | PCA の次元数 |
+| `--seed` | `42` | 乱数シード |
+| `--max-iter` | `300` | k-means 最大イテレーション数 |
+| `--n-init` | `10` | k-means 初期化試行回数 |
+
+---
+
+### ⑨ 部品辞書の可視化（viz_parts.py）
+
+クラスタ辞書（代表パッチ一覧・位置ヒートマップ）を PNG に出力します。
+
+**部品ギャラリー（代表パッチグリッド）:**
+```bash
+python scripts/viz_parts.py \
+    --kmeans out/patches/kmeans.npz \
+    --out    out/patches/parts_gallery.png
+```
+
+**部品ギャラリー + 出現位置ヒートマップ:**
+```bash
+python scripts/viz_parts.py \
+    --kmeans   out/patches/kmeans.npz \
+    --features out/patches/patches.npz \
+    --out      out/patches/parts_gallery.png \
+    --heatmap  out/patches/parts_heatmap.png
+```
+
+**Docker を使う場合:**
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/viz_parts.py \
+    --kmeans   out/patches/kmeans.npz \
+    --features out/patches/patches.npz \
+    --out      out/patches/parts_gallery.png \
+    --heatmap  out/patches/parts_heatmap.png
+```
+
+**主なオプション:**
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--kmeans` | （必須） | `patch_kmeans.py` が出力した `.npz` ファイル |
+| `--features` | なし | `patch_extractor.py` の `.npz`（ヒートマップに必要） |
+| `--out` | `parts_gallery.png` | ギャラリー PNG 出力パス |
+| `--heatmap` | なし（省略可） | 位置ヒートマップ PNG 出力パス（`--features` 必須） |
+| `--sdf-size` | `256` | 元 SDF 画像の一辺ピクセル数 |
+| `--cols` | `8` | グリッド列数 |
+| `--thumb` | `96` | サムネイルサイズ（ピクセル） |
+| `--cmap` | `RdBu_r` | パッチ表示用カラーマップ |
+| `--hcmap` | `hot` | ヒートマップ用カラーマップ |
+
+---
+
+### パーツ断片化の意義
+
+このフェーズにより以下が実現できます：
+
+| 用途 | 内容 |
+|---|---|
+| **研究用途** | クラスタごとの出現位置分布・出現頻度・代表形状を定量化 |
+| **作品用途** | クラスタパッチを組み合わせることで新たな文字の"合成"が可能 |
+| **次フェーズへの橋渡し** | 復元誤差・クラスタ間モーフィング・パーツ置換実験 |
+
+> **ポイント：** 部首の自動分類ではなく「データ駆動な形状断片化」が行われます。  
+> クラスタが必ずしも人間の定義する部首と一致するとは限りませんが、  
+> 統計的に繰り返し出現する形状パターンを捉えた辞書が得られます。
