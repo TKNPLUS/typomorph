@@ -32,7 +32,7 @@ OUT_UNION   = HERE / "union_joyo_jis2.txt"
 # ---------------------------------------------------------------------------
 
 def write_list(path: Path, chars: list[str]) -> None:
-    """Write one character per line, UTF-8, no trailing blank lines."""
+    """Write one character per line, UTF-8, with a single trailing newline."""
     path.write_text("\n".join(chars) + "\n", encoding="utf-8")
     print(f"  wrote {len(chars)} chars → {path.relative_to(ROOT)}")
 
