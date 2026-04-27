@@ -17,7 +17,8 @@ typomorph/
 │   └── union_joyo_jis2.txt    # 常用∪JIS2 の和集合（生成物）
 ├── scripts/
 │   ├── render_png.py     # 文字 → 正規化PNG レンダリングスクリプト
-│   └── make_sdf.py       # PNG → SDF（.npy）生成スクリプト
+│   ├── make_sdf.py       # PNG → SDF（.npy）生成スクリプト
+│   └── viz_sdf.py        # SDF（.npy）可視化スクリプト（単体表示・ギャラリー）
 ├── requirements.txt      # Python 依存パッケージ
 ├── Dockerfile            # Docker イメージ定義
 └── README.md
@@ -188,7 +189,117 @@ docker run --rm -v "$(pwd)":/work typomorph \
 
 ---
 
-## 文字リストの生成
+## SDFの見方（可視化ガイド）
+
+> **ポイント：** 中央付近に **0等値線（白いライン）** が現れ、それを跨いで青（内側・インク）と赤（外側・背景）に分かれるのが正常なSDFです。
+
+### SDFが「靄（もや）状」に見えるのは正常
+
+SDF（符号付き距離場）は **輪郭からの距離** を各ピクセルに格納した配列です。  
+そのため、`numpy.load()` 後に直接 `imshow()` すると「全体がふわっとグレーに満ちている」ように見えますが、これは正しい挙動です。
+
+| 状態 | 意味 |
+|---|---|
+| 全体が滑らかなグラデーション（靄状） | ✅ 正常（SDF の本来の性質） |
+| 輪郭付近に中央を横切る0等値線が見える | ✅ 正常 |
+| 全ピクセルがほぼ同じ値（真っ黒 / 真っ白）で輪郭が見えない | ⚠️ 変換ミスの可能性 |
+
+---
+
+### ⑤ SDF の可視化（1文字）
+
+`scripts/viz_sdf.py` を使うと、SDFを**発散型カラーマップ（内側=青、外側=赤）** と **0等値線（白）** で表示できます。
+
+**単体表示（インタラクティブ）:**
+```bash
+python scripts/viz_sdf.py out/sdf/U+4E00.npy
+```
+
+**PNG に保存:**
+```bash
+python scripts/viz_sdf.py out/sdf/U+4E00.npy --out preview.png
+```
+
+**Docker を使う場合:**
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/viz_sdf.py out/sdf/U+4E00.npy --out preview.png
+```
+
+---
+
+### ⑥ SDF ギャラリー（複数文字を一覧表示）
+
+`--gallery` オプションを使うと、ディレクトリ内の全 `.npy` ファイルをサムネイル一覧 PNG に書き出せます。
+
+```bash
+python scripts/viz_sdf.py --gallery out/sdf/ --out gallery.png
+```
+
+**文字リストで絞り込み・順序を指定する場合:**
+```bash
+python scripts/viz_sdf.py --gallery out/sdf/ --list lists/joyo.txt --out gallery.png
+```
+
+**カラム数とサムネサイズを調整する場合:**
+```bash
+python scripts/viz_sdf.py --gallery out/sdf/ --cols 20 --thumb 64 --out gallery.png
+```
+
+**Docker を使う場合:**
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/viz_sdf.py --gallery out/sdf/ --list lists/joyo.txt --out gallery.png
+```
+
+---
+
+### viz_sdf.py オプション一覧
+
+**単体表示モード（positional argument に .npy ファイルを指定）**
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `file` | （必須） | .npy SDF ファイルパス |
+| `--out` | なし（インタラクティブ表示） | 出力ファイルパス（PNG / PDF / SVG）|
+| `--clip` | auto | カラー軸の対称上限（ピクセル）|
+| `--no-contour` | false | 0等値線を非表示にする |
+| `--cmap` | `RdBu_r` | Matplotlib カラーマップ名 |
+| `--title` | ファイルステム | 図のタイトル |
+
+**ギャラリーモード（`--gallery DIR` を指定）**
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--gallery` | （必須） | .npy ファイルが入ったディレクトリ |
+| `--list` | なし（全ファイル） | 文字リスト .txt（絞り込み・順序指定）|
+| `--out` | `<sdf_dir>/sdf_gallery.png` | 出力 PNG パス |
+| `--cols` | `16` | グリッドの列数 |
+| `--thumb` | `48` | サムネイルサイズ（ピクセル）|
+| `--cmap` | `RdBu_r` | Matplotlib カラーマップ名 |
+
+---
+
+### 輪郭線だけを確認したい場合（0-crossing 抽出）
+
+SDF が 0 を跨ぐ箇所だけを表示すれば、元の字形に近いシルエットを確認できます。
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+
+sdf = np.load("out/sdf/U+4E00.npy")
+fig, ax = plt.subplots(figsize=(4, 4))
+ax.contour(sdf, levels=[0.0], colors="black", linewidths=1.5)
+ax.set_aspect("equal")
+ax.invert_yaxis()
+ax.axis("off")
+plt.tight_layout()
+plt.show()
+```
+
+---
+
 
 `lists/joyo.txt` は `data/joyo.txt`（文化庁常用漢字表を参照）をもとに生成されます。  
 JIS X 0208 第1・第2水準リストや和集合を再生成するには：
