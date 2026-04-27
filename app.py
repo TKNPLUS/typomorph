@@ -121,7 +121,13 @@ def _pipeline_status(root: str) -> None:
     ]
     st.markdown("**パイプライン状態**")
     for label, path in stages:
-        exists = path.exists() if path.suffix else any(path.glob("*")) if path.is_dir() else False
+        exists: bool
+        if path.suffix:
+            exists = path.exists()
+        elif path.is_dir():
+            exists = any(path.glob("*"))
+        else:
+            exists = False
         icon = "✅" if exists else "⬜"
         st.markdown(f"{icon} {label}")
 
@@ -225,6 +231,8 @@ with tab1:
         from PIL import ImageFont  # noqa: PLC0415
 
         try:
+            # Load at double the canvas size; render_char uses explicit scaling so
+            # only the initial point size needs to be large enough for the temp canvas.
             pil_font = ImageFont.truetype(str(font_path), size=int(t1_size) * 2)
         except Exception as exc:
             st.error(f"❌ フォント読み込み失敗: {exc}")
