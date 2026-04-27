@@ -16,7 +16,8 @@ typomorph/
 │   ├── jis_level2_kanji.txt   # JIS X 0208 第1・第2水準 漢字（生成物）
 │   └── union_joyo_jis2.txt    # 常用∪JIS2 の和集合（生成物）
 ├── scripts/
-│   └── render_png.py     # 文字 → 正規化PNG レンダリングスクリプト
+│   ├── render_png.py     # 文字 → 正規化PNG レンダリングスクリプト
+│   └── make_sdf.py       # PNG → SDF（.npy）生成スクリプト
 ├── requirements.txt      # Python 依存パッケージ
 ├── Dockerfile            # Docker イメージ定義
 └── README.md
@@ -124,6 +125,69 @@ docker run --rm -v "$(pwd)":/work typomorph \
 
 ---
 
+### ④ SDF 生成の実行
+
+`out/png/` の PNG ファイルをもとに Signed Distance Field（符号付き距離場）を生成します。
+
+**Windows PowerShell:**
+```powershell
+docker run --rm -v ${PWD}:/work typomorph `
+    python scripts/make_sdf.py `
+    --list lists/joyo.txt `
+    --png  out/png `
+    --out  out/sdf
+```
+
+**Git Bash:**
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/make_sdf.py \
+    --list lists/joyo.txt \
+    --png  out/png \
+    --out  out/sdf
+```
+
+**Windows コマンドプロンプト (cmd.exe):**
+```cmd
+docker run --rm -v %cd%:/work typomorph ^
+    python scripts/make_sdf.py ^
+    --list lists/joyo.txt ^
+    --png  out/png ^
+    --out  out/sdf
+```
+
+出力は `out/sdf/` ディレクトリに `U+4E00.npy` のようなファイル名で保存されます。  
+各ファイルは **float32 の 256×256 numpy 配列**で、距離はピクセル単位です。  
+符号の定義：**内側（インク）が負、外側（背景）が正**、値域は `[-32, 32]` にクリップ。
+
+---
+
+### make_sdf.py オプション一覧
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--list` | （必須） | 1行1文字のテキストファイルパス |
+| `--png` | （必須） | 入力 PNG ディレクトリ（例: `out/png`） |
+| `--out` | （必須） | SDF 出力ディレクトリ（例: `out/sdf`） |
+| `--clip` | `32` | 距離クリップ半径（ピクセル） |
+| `--threshold` | `128` | 二値化しきい値（この値未満がインク/内側） |
+| `--workers` | `1` | 並列ワーカープロセス数（1 = 直列） |
+| `--skip-existing` | `false` | 既存ファイルをスキップする |
+
+#### 並列処理・既存スキップの使用例
+
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/make_sdf.py \
+    --list lists/joyo.txt \
+    --png  out/png \
+    --out  out/sdf \
+    --workers 4 \
+    --skip-existing
+```
+
+---
+
 ## 文字リストの生成
 
 `lists/joyo.txt` は `data/joyo.txt`（文化庁常用漢字表を参照）をもとに生成されます。  
@@ -145,6 +209,7 @@ Python 3.11+ と fontconfig が利用可能な環境（Linux / WSL2 推奨）で
 ```bash
 pip install -r requirements.txt
 python scripts/render_png.py --list lists/joyo.txt --out out/png --font "Noto Sans CJK JP"
+python scripts/make_sdf.py   --list lists/joyo.txt --png out/png  --out out/sdf
 ```
 
 fontconfig が未インストールの場合：
