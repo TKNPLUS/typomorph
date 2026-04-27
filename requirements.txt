@@ -1,6 +1,6 @@
-numpy
-pillow
-scipy
-scikit-learn
-matplotlib
-tqdm
+numpy>=2.2,<3
+pillow>=11.0,<13
+scipy>=1.15,<2
+scikit-learn>=1.6,<2
+matplotlib>=3.9,<4
+tqdm>=4.66,<5
