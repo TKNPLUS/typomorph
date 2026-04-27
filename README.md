@@ -21,7 +21,8 @@ typomorph/
 │   ├── viz_sdf.py             # SDF（.npy）可視化スクリプト（単体表示・ギャラリー）
 │   ├── patch_extractor.py     # SDF → 局所パッチ抽出・特徴量保存（.npz）
 │   ├── patch_kmeans.py        # パッチ特徴量 → PCA + k-means クラスタ辞書（.npz）
-│   └── viz_parts.py           # クラスタ辞書の可視化（部品ギャラリー・位置ヒートマップ）
+│   ├── viz_parts.py           # クラスタ辞書の可視化（部品ギャラリー・位置ヒートマップ）
+│   └── demo_parts.py          # 部品辞書の探索・応用デモ（モーフィング・復元・統計）
 ├── requirements.txt           # Python 依存パッケージ
 ├── Dockerfile                 # Docker イメージ定義
 └── README.md
@@ -475,3 +476,239 @@ docker run --rm -v "$(pwd)":/work typomorph \
 > **ポイント：** 部首の自動分類ではなく「データ駆動な形状断片化」が行われます。  
 > クラスタが必ずしも人間の定義する部首と一致するとは限りませんが、  
 > 統計的に繰り返し出現する形状パターンを捉えた辞書が得られます。
+
+---
+
+## 成果物整理と可視化図説
+
+### 生成画像の意義
+
+`parts_gallery.png` と `parts_heatmap.png` はそれぞれ以下の情報を可視化した成果物です。
+
+| ファイル | 内容 | 研究・作品上の意義 |
+|---|---|---|
+| `parts_gallery.png` | クラスタごとの代表パッチ一覧（SDF カラーマップ＋等値線） | データ駆動で発見された「部首様パーツ辞書」の全体像を一望できる。論文・発表の **Figure** として直接使用可能 |
+| `parts_heatmap.png` | クラスタごとのパッチ出現位置の 2-D ヒストグラム | 各パーツが文字のどの位置（左辺・上部・中央など）に集中して現れるかを示す。位置的役割の統計的解釈に有用 |
+
+### 研究用図説（キャプション案）
+
+**日本語キャプション例:**
+
+```
+図X. データ駆動な部首様パーツ辞書（64クラスタ，パッチサイズ64px）
+各セルはクラスタの代表パッチを SDF カラーマップ（青=インク内側，赤=外側，白=輪郭）で表示し，
+括弧内はそのクラスタへ割り当てられたパッチ総数を示す。
+```
+
+```
+図Y. クラスタ別パッチ出現位置ヒートマップ（64クラスタ）
+各マップは対応するクラスタのパッチ中心が 256×256 グリッド上のどの位置に集中して現れるかを
+2-D ヒストグラム（ビン数 32×32）で表したもの。輝度が高いほど出現頻度が高い。
+```
+
+**英語キャプション例:**
+
+```
+Figure X.  Data-driven radical-like parts dictionary (64 clusters, 64 px patches).
+Each cell shows the representative patch of a cluster rendered as an SDF colormap
+(blue = inside/ink, red = outside, white = outline).  Numbers in parentheses denote
+the cluster population.
+```
+
+```
+Figure Y.  Per-cluster patch position heatmaps (64 clusters).
+Each map is a 2-D histogram (32×32 bins) of patch centre coordinates within
+the 256×256 SDF grid, aggregated over all characters.  Brighter values indicate
+higher occurrence frequency.
+```
+
+### LaTeX 図挿入サンプル
+
+```latex
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/parts_gallery.png}
+  \caption{Data-driven radical-like parts dictionary (64 clusters, 64\,px patches).
+           Each cell shows the representative SDF patch of a cluster;
+           blue regions indicate ink (negative SDF), red indicates background
+           (positive SDF), and white contours mark the glyph outline ($d=0$).
+           Numbers in parentheses show the cluster population.}
+  \label{fig:parts_gallery}
+\end{figure}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/parts_heatmap.png}
+  \caption{Patch position heatmaps for all 64 clusters.
+           Each map is a 2-D histogram of patch centre locations within
+           the $256\times256$ SDF grid, aggregated across the entire character set.
+           Brighter colours indicate higher occurrence frequency,
+           revealing the preferred spatial role of each part
+           (e.g.\ left-side radical vs.\ top component).}
+  \label{fig:parts_heatmap}
+\end{figure}
+```
+
+---
+
+## 今後の推奨ステップ
+
+### ⑩ 復元性能評価（定量評価）
+
+パーツ辞書でどれだけ元の SDF を再現できるかを測定します。  
+各文字の SDF を「辞書の最近傍パッチで埋め戻す」ことで再構成 SDF を作り、  
+元 SDF との差分（MSE・PSNR など）を算出します。
+
+```bash
+python scripts/demo_parts.py reconstruct \
+    --kmeans   out/patches/kmeans.npz \
+    --features out/patches/patches.npz \
+    --sdf      out/sdf \
+    --out      out/patches/reconstruction
+```
+
+| 指標 | 意味 |
+|---|---|
+| **MSE (Mean Squared Error)** | 再構成精度（低いほど良い） |
+| **PSNR** | ピーク信号対雑音比（高いほど良い） |
+| **Coverage rate** | 元 SDF の輪郭ピクセルのうちパッチで覆われた割合 |
+
+### ⑪ 部首-文字分解タスク（Radical Decomposition）
+
+クラスタラベル列を文字ごとに集計すると、  
+「この文字はクラスタ X・Y・Z から構成される」という**部首分解ベクトル**が得られます。  
+これを使って：
+
+- 同じ部首パーツを多く共有する文字をクラスタ化（意味的な類似文字検索）
+- 「部首ベクトル」の演算で新しい字形を設計（ベクトル算術）
+
+```bash
+python scripts/demo_parts.py decompose \
+    --kmeans   out/patches/kmeans.npz \
+    --features out/patches/patches.npz \
+    --out      out/patches/char_vectors.csv
+```
+
+### ⑫ 応用デモ：パーツ変換・生成アート
+
+`demo_parts.py` の `morph` サブコマンドで、2 つのクラスタ代表パッチ間の  
+線形補間（モーフィング）アニメーションを生成できます。
+
+```bash
+# クラスタ 3 → クラスタ 27 の 8 ステップモーフィング
+python scripts/demo_parts.py morph \
+    --kmeans out/patches/kmeans.npz \
+    --from 3 --to 27 --steps 8 \
+    --out out/patches/morph_3_27.png
+```
+
+また `gallery-stats` サブコマンドで CSV 統計を出力し、  
+各クラスタの出現重心・分散なども確認できます。
+
+```bash
+python scripts/demo_parts.py gallery-stats \
+    --kmeans   out/patches/kmeans.npz \
+    --features out/patches/patches.npz \
+    --out      out/patches/cluster_stats.csv
+```
+
+---
+
+## 付録：可視化デモスクリプト（demo_parts.py）
+
+`scripts/demo_parts.py` は部品辞書を対話的に探索・応用するためのスタンドアロンデモです。  
+以下の 5 つのサブコマンドを持ちます。
+
+| サブコマンド | 説明 |
+|---|---|
+| `show-patch` | 指定したクラスタ番号の代表パッチを表示・保存 |
+| `morph` | 2 クラスタ間の線形補間パッチ列を画像として保存 |
+| `reconstruct` | SDF をパーツ辞書で再構成し元画像との差分を可視化 |
+| `gallery-stats` | クラスタごとの統計（件数・重心・分散）を CSV 出力 |
+| `decompose` | 文字ごとのクラスタ割当ベクトルを CSV 出力 |
+
+### インストール済み環境での使い方
+
+```bash
+# 代表パッチをファイルに保存（クラスタ番号 5）
+python scripts/demo_parts.py show-patch \
+    --kmeans out/patches/kmeans.npz \
+    --cluster 5 \
+    --out out/patches/patch_5.png
+
+# 2 クラスタ間モーフィング（8 ステップ）
+python scripts/demo_parts.py morph \
+    --kmeans out/patches/kmeans.npz \
+    --from 3 --to 27 --steps 8 \
+    --out out/patches/morph_3_27.png
+
+# クラスタ統計 CSV
+python scripts/demo_parts.py gallery-stats \
+    --kmeans   out/patches/kmeans.npz \
+    --features out/patches/patches.npz \
+    --out      out/patches/cluster_stats.csv
+
+# 文字ごとのクラスタ割当ベクトル CSV
+python scripts/demo_parts.py decompose \
+    --kmeans   out/patches/kmeans.npz \
+    --features out/patches/patches.npz \
+    --out      out/patches/char_vectors.csv
+```
+
+### Docker を使う場合
+
+```bash
+docker run --rm -v "$(pwd)":/work typomorph \
+    python scripts/demo_parts.py morph \
+    --kmeans out/patches/kmeans.npz \
+    --from 3 --to 27 --steps 8 \
+    --out out/patches/morph_3_27.png
+```
+
+---
+
+## 付録：出力ファイル仕様
+
+### `.npy` (SDF 単体ファイル)
+
+| 項目 | 仕様 |
+|---|---|
+| dtype | `float32` |
+| shape | `(H, W)` — デフォルト `(256, 256)` |
+| 値域 | `[-clip, clip]` — デフォルト `[-32.0, 32.0]` ピクセル単位 |
+| 符号 | 負 = インク内側、正 = 背景、0 = 輪郭 |
+| ファイル名 | `U+<XXXX>.npy`（Unicode コードポイント大文字 4〜5 桁） |
+
+### `patches.npz` (パッチ特徴量ファイル)
+
+`patch_extractor.py` が出力する `.npz` の配列仕様:
+
+| キー | shape | dtype | 説明 |
+|---|---|---|---|
+| `patches` | `(N, patch_size*patch_size)` | float32 | flatten されたパッチ特徴量 |
+| `positions` | `(N, 3)` | int32 | `[file_idx, row, col]`（パッチ左上座標） |
+| `file_ids` | `(F,)` | unicode str | ファイル識別子（コードポイント文字列）の配列 |
+| `patch_size` | scalar | int | パッチ一辺サイズ（ピクセル） |
+
+### `kmeans.npz` (クラスタ辞書ファイル)
+
+`patch_kmeans.py` が出力する `.npz` の配列仕様:
+
+| キー | shape | dtype | 説明 |
+|---|---|---|---|
+| `rep_patches` | `(k, patch_size, patch_size)` | float32 | 各クラスタの代表パッチ（クラスタ重心を元空間に逆変換） |
+| `labels` | `(N,)` | int32 | 全パッチのクラスタラベル |
+| `centers` | `(k, pca_dim)` | float32 | PCA 空間でのクラスタ重心 |
+| `pca_components` | `(pca_dim, patch_size*patch_size)` | float32 | PCA 主成分行列 |
+| `pca_mean` | `(patch_size*patch_size,)` | float32 | PCA 平均ベクトル |
+| `n_clusters` | scalar | int | クラスタ数 k |
+| `patch_size` | scalar | int | パッチ一辺サイズ（ピクセル） |
+
+### PNG 出力ファイル
+
+| ファイル | 生成スクリプト | 説明 |
+|---|---|---|
+| `out/png/U+<XXXX>.png` | `render_png.py` | グレースケール PNG（白背景・黒文字） |
+| `out/patches/parts_gallery.png` | `viz_parts.py` | 部品辞書ギャラリー（クラスタ代表パッチ一覧） |
+| `out/patches/parts_heatmap.png` | `viz_parts.py` | 出現位置ヒートマップ一覧 |
+| `out/patches/morph_*.png` | `demo_parts.py` | クラスタ間モーフィング画像 |
