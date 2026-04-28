@@ -23,6 +23,7 @@ typomorph/
 │   ├── patch_kmeans.py        # パッチ特徴量 → PCA + k-means クラスタ辞書（.npz）
 │   ├── viz_parts.py           # クラスタ辞書の可視化（部品ギャラリー・位置ヒートマップ）
 │   └── demo_parts.py          # 部品辞書の探索・応用デモ（モーフィング・復元・統計）
+├── app.py                     # Streamlit GUI（全パイプラインを 1 画面で操作）
 ├── requirements.txt           # Python 依存パッケージ
 ├── Dockerfile                 # Docker イメージ定義
 └── README.md
@@ -337,7 +338,93 @@ fc-cache -fv
 
 ---
 
-## フェーズ2: パッチ抽出 → クラスタリング → 部品辞書生成
+## GUI（Streamlit）での操作
+
+CLI スクリプトを 1 つの Web UI から順番に実行できます。  
+① PNG レンダリング → ② SDF 生成 → ③ パッチ抽出 → ④ クラスタリング → ⑤ 可視化  
+という 5 ステップすべてをタブ切り替えでコントロールできます。
+
+---
+
+### 推奨環境
+
+| 項目 | 要件 |
+|---|---|
+| Python | 3.11 以上 |
+| OS | Linux / WSL2 / macOS（Windows は WSL2 推奨） |
+| フォント | Noto Sans CJK JP（`apt install fonts-noto-cjk`） |
+| fontconfig | `apt install fontconfig` |
+
+---
+
+### 依存パッケージ
+
+`requirements.txt` に追加された主な依存：
+
+| パッケージ | バージョン | 用途 |
+|---|---|---|
+| `streamlit` | >=1.35,<2 | Web GUI フレームワーク |
+| `numpy` | >=2.2,<3 | 数値計算 |
+| `pillow` | >=11.0,<13 | PNG 読み書き |
+| `scipy` | >=1.15,<2 | SDF 距離変換 |
+| `scikit-learn` | >=1.6,<2 | PCA・k-means |
+| `matplotlib` | >=3.9,<4 | 可視化・ギャラリー生成 |
+| `tqdm` | >=4.66,<5 | プログレスバー（CLI） |
+
+インストール：
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+### ローカルでの起動
+
+```bash
+streamlit run app.py
+```
+
+ブラウザで `http://localhost:8501` が自動で開きます。
+
+---
+
+### Docker での起動
+
+**Git Bash / WSL:**
+```bash
+docker run --rm -p 8501:8501 -v "$(pwd)":/work typomorph \
+    streamlit run app.py --server.address 0.0.0.0
+```
+
+**Windows PowerShell:**
+```powershell
+docker run --rm -p 8501:8501 -v ${PWD}:/work typomorph `
+    streamlit run app.py --server.address 0.0.0.0
+```
+
+起動後、ブラウザで `http://localhost:8501` を開いてください。
+
+---
+
+### GUI の使い方
+
+サイドバーの **「出力ルートディレクトリ」** でデータ保存先を指定し、  
+各タブを順番に操作します。
+
+| タブ | 対応 CLI スクリプト | 主なパラメータ |
+|---|---|---|
+| ① PNG レンダリング | `render_png.py` | 文字リスト・フォント名・解像度・マージン |
+| ② SDF 生成 | `make_sdf.py` | クリップ距離・2値化しきい値 |
+| ③ パッチ抽出 | `patch_extractor.py` | パッチサイズ・境界パッチ数・マージン幅 |
+| ④ クラスタリング | `patch_kmeans.py` | クラスタ数 k・PCA 次元数・乱数シード |
+| ⑤ 可視化 | `viz_parts.py` | グリッド列数・サムネイルサイズ・カラーマップ |
+
+- **▶ ボタン**を押すと処理が実行され、プログレスバーで進捗が表示されます。
+- 処理完了後、結果画像（ギャラリー・ヒートマップ）がページ内にサムネイル表示されます。
+- サイドバーの **「パイプライン状態」** で各ステージの出力ファイル有無を確認できます。
+
+---
 
 SDFの可視化・正常性確認が済んだら、次のステップとして「部首っぽいパーツ断片化」を行います。  
 SDFから局所パッチを切り出し、PCAで次元圧縮したあとにk-meansでクラスタリングすることで、  
