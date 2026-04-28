@@ -30,34 +30,34 @@ decompose
 Usage examples
 --------------
     # Show / save cluster 5's representative patch
-    python scripts/demo_parts.py show-patch \\
-        --kmeans out/patches/kmeans.npz \\
-        --cluster 5 \\
+    python scripts/demo_parts.py show-patch \
+        --kmeans out/patches/kmeans.npz \
+        --cluster 5 \
         --out out/patches/patch_5.png
 
     # 8-step morph from cluster 3 → cluster 27
-    python scripts/demo_parts.py morph \\
-        --kmeans out/patches/kmeans.npz \\
-        --from 3 --to 27 --steps 8 \\
+    python scripts/demo_parts.py morph \
+        --kmeans out/patches/kmeans.npz \
+        --from 3 --to 27 --steps 8 \
         --out out/patches/morph_3_27.png
 
     # Reconstruct one SDF and report metrics
-    python scripts/demo_parts.py reconstruct \\
-        --kmeans   out/patches/kmeans.npz \\
-        --features out/patches/patches.npz \\
-        --sdf      out/sdf \\
+    python scripts/demo_parts.py reconstruct \
+        --kmeans   out/patches/kmeans.npz \
+        --features out/patches/patches.npz \
+        --sdf      out/sdf \
         --out      out/patches/reconstruction
 
     # Export per-cluster statistics to CSV
-    python scripts/demo_parts.py gallery-stats \\
-        --kmeans   out/patches/kmeans.npz \\
-        --features out/patches/patches.npz \\
+    python scripts/demo_parts.py gallery-stats \
+        --kmeans   out/patches/kmeans.npz \
+        --features out/patches/patches.npz \
         --out      out/patches/cluster_stats.csv
 
     # Export per-character bag-of-parts vectors to CSV
-    python scripts/demo_parts.py decompose \\
-        --kmeans   out/patches/kmeans.npz \\
-        --features out/patches/patches.npz \\
+    python scripts/demo_parts.py decompose \
+        --kmeans   out/patches/kmeans.npz \
+        --features out/patches/patches.npz \
         --out      out/patches/char_vectors.csv
 """
 
@@ -227,7 +227,7 @@ def cmd_reconstruct(args: argparse.Namespace) -> None:
     rep_patches = kmeans_data["rep_patches"]     # (k, H, W)
     labels = features_data["labels"] if "labels" in features_data else kmeans_data["labels"]
     positions = features_data["positions"]       # (N, 3): [file_idx, row, col]
-    file_ids = features_data.get("sources", features_data.get("file_ids"))  # (F,)
+    file_ids = features_data.get("file_ids", features_data.get("sources"))
     patch_size = int(kmeans_data["patch_size"])
     n_clusters = int(kmeans_data["n_clusters"])
     sdf_size = args.sdf_size
@@ -414,7 +414,7 @@ def cmd_decompose(args: argparse.Namespace) -> None:
     n_clusters = int(kmeans_data["n_clusters"])
     labels = kmeans_data["labels"]               # (N,)
     positions = features_data["positions"]       # (N, 3): [file_idx, row, col]
-    file_ids = features_data.get("sources", features_data.get("file_ids"))  # (F,)
+    file_ids = features_data.get("file_ids", features_data.get("sources"))
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
